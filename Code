@@ -1,0 +1,72 @@
+# importing all required modules
+import pandas as pd
+import json
+import requests
+import time
+import xlwings
+import schedule
+
+url_banknifty = "https://www.nseindia.com/api/option-chain-indices?symbol=BANKNIFTY"
+headers = {
+        "Accept-Encoding" : "gzip, deflate, br",
+        "Accept-Language" : "en-US,en;q=0.9",
+        "User-Agent" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 Edg/114.0.1823.43"
+    }
+
+
+def Retrieve_Option_BANKNIFTY():
+
+    session = requests.Session()
+    data = session.get(url_banknifty, headers = headers).json()  # retrieving data from above url
+    expiry = '06-Jul-2023'                                       
+    ce_values = [d['CE'] for d in data['records']['data'] if "CE" in d and str(d['expiryDate'].lower()) == str(expiry).lower()]
+    pe_values = [d['PE'] for d in data['records']['data'] if "PE" in d and str(d['expiryDate'].lower()) == str(expiry).lower()]
+    ce_data = pd.DataFrame(ce_values)                            # storing all call option data into a dataframre
+    pe_data = pd.DataFrame(pe_values)                            # storing all put option data into a dataframre
+    ce_data = ce_data.sort_values(['strikePrice'])               
+    pe_data = pe_data.sort_values(['strikePrice'])
+
+    a = ce_data['underlyingValue']
+    underlying = a[0]
+
+    for i in range(len(ce_data)):
+        if ce_data['openInterest'][i] == ce_data['openInterest'].max():
+            call_strike = ce_data['strikePrice'][i]
+            ltp_call = ce_data['lastPrice'][i]
+
+    for i in range(len(pe_data)):
+        if pe_data['openInterest'][i] == pe_data['openInterest'].max():
+            put_strike = pe_data['strikePrice'][i]
+            ltp_put = pe_data['lastPrice'][i]   
+
+    resistance = call_strike + (ltp_call + ltp_put)
+    support = put_strike - (ltp_call + ltp_put)
+
+
+    excel_workbook = 'option_chain_analysis (Recovered).xlsx'    # exporting data to excel
+    wb = xlwings.Book(excel_workbook)
+    sheet1 = wb.sheets('BANKNIFTY')
+    sheet1.range("B9").options(index=False,header=False).value = ce_data.drop(['strikePrice','expiryDate','underlying','identifier','pchangeinOpenInterest','pChange','totalBuyQuantity','totalSellQuantity','underlyingValue','bidQty','bidprice','askPrice','askQty'],axis=1)[['openInterest','changeinOpenInterest','totalTradedVolume','impliedVolatility','lastPrice','change']]
+    sheet1.range("H9").options(index=False,header=False).value = pe_data.drop(['expiryDate','underlying','identifier','pchangeinOpenInterest','pChange','totalBuyQuantity','totalSellQuantity','bidQty','bidprice','askPrice','askQty'],axis=1)[['strikePrice','change','lastPrice','impliedVolatility','totalTradedVolume','changeinOpenInterest','openInterest']]
+    sheet1.range("H4").options(index=False,header=False).value = underlying
+    sheet1.range("A4").options(index=False,header=False).value = expiry
+
+    excel_workbook = 'option_chain_analysis (Recovered).xlsx'
+    wb = xlwings.Book(excel_workbook)
+    sheet1 = wb.sheets('BANKNIFTY_2')
+    sheet1.range("A10").options(index=False,header=False).value = ce_data.drop(['expiryDate','underlying','identifier','pchangeinOpenInterest','pChange','totalBuyQuantity','totalSellQuantity','underlyingValue','bidQty','bidprice','askPrice','askQty'],axis=1)[['strikePrice','openInterest','changeinOpenInterest','totalTradedVolume','impliedVolatility','lastPrice','change']]
+    sheet1.range("A90").options(index=False,header=False).value = pe_data.drop(['expiryDate','underlying','identifier','pchangeinOpenInterest','pChange','totalBuyQuantity','totalSellQuantity','bidQty','bidprice','askPrice','askQty'],axis=1)[['strikePrice','openInterest','changeinOpenInterest','totalTradedVolume','impliedVolatility','lastPrice','change']]
+    sheet1.range("D4").options(index=False,header=False).value = underlying
+    sheet1.range("A4").options(index=False,header=False).value = expiry
+    sheet1.range("N3").options(index=False,header=False).value = resistance
+    sheet1.range("O3").options(index=False,header=False).value = support
+    sheet1.range("D187").options(index=False,header=False).value = ce_data.drop(['expiryDate','underlying','identifier','pchangeinOpenInterest','pChange','totalBuyQuantity','totalSellQuantity','underlyingValue','bidQty','bidprice','askPrice','askQty','changeinOpenInterest','totalTradedVolume','impliedVolatility','lastPrice','change'],axis=1)[['strikePrice','openInterest']]
+    sheet1.range("F187").options(index=False,header=False).value = pe_data.drop(['expiryDate','underlying','identifier','pchangeinOpenInterest','pChange','totalBuyQuantity','totalSellQuantity','bidQty','bidprice','askPrice','askQty','strikePrice','changeinOpenInterest','totalTradedVolume','impliedVolatility','lastPrice','change'],axis=1)[['openInterest']]
+
+
+while True:
+    try:
+        Retrieve_Option_BANKNIFTY()
+        time.sleep(10)                # runs the code indefinitely every 10 seconds 
+    except:
+        print('Problem')
